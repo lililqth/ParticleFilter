@@ -1,9 +1,7 @@
-//#include <opencv2/imgproc/imgproc.hpp>  
-//#include <opencv2/core/core.hpp>
-//#include <opencv2/highgui/highgui.hpp>  
 #include <opencv2/opencv.hpp>
-#include<time.h>
-#include<iostream>
+#include <time.h>
+#include <iostream>
+#include<fstream>
 using namespace std;
 using namespace cv;
 
@@ -11,165 +9,119 @@ using namespace cv;
 #define B(image,x,y) ((uchar*)(image->imageData + image->widthStep*(y)))[(x)*3]		//B
 #define G(image,x,y) ((uchar*)(image->imageData + image->widthStep*(y)))[(x)*3+1]	//G
 #define R(image,x,y) ((uchar*)(image->imageData + image->widthStep*(y)))[(x)*3+2]	//R
-#define S(image,x,y) ((uchar*)(image->imageData + image->widthStep*(y)))[(x)]	
-#define  Num 10  //Ö¡²îµÄ¼ä¸ô
-#define  T 40    //Tf
-#define Re 30     //
-#define ai 0.08   //Ñ§Ï°ÂÊ
 
-#define CONTOUR_MAX_AREA 10000
-#define CONTOUR_MIN_AREA 50
+# define R_BIN      8  /* çº¢è‰²åˆ†é‡çš„ç›´æ–¹å›¾æ¡æ•° */
+# define G_BIN      8  /* ç»¿è‰²åˆ†é‡çš„ç›´æ–¹å›¾æ¡æ•° */
+# define B_BIN      8  /* å…°è‰²åˆ†é‡çš„ç›´æ–¹å›¾æ¡æ•° */
 
-# define R_BIN      8  /* ºìÉ«·ÖÁ¿µÄÖ±·½Í¼ÌõÊı */
-# define G_BIN      8  /* ÂÌÉ«·ÖÁ¿µÄÖ±·½Í¼ÌõÊı */
-# define B_BIN      8  /* À¼É«·ÖÁ¿µÄÖ±·½Í¼ÌõÊı */ 
+# define R_SHIFT    5  /* ä¸ä¸Šè¿°ç›´æ–¹å›¾æ¡æ•°å¯¹åº” */
+# define G_SHIFT    5  /* çš„Rã€Gã€Båˆ†é‡å·¦ç§»ä½æ•° */
+# define B_SHIFT    5  /* log2( 256/8 )ä¸ºç§»åŠ¨ä½æ•° */
 
-# define R_SHIFT    5  /* ÓëÉÏÊöÖ±·½Í¼ÌõÊı¶ÔÓ¦ */
-# define G_SHIFT    5  /* µÄR¡¢G¡¢B·ÖÁ¿×óÒÆÎ»Êı */
-# define B_SHIFT    5  /* log2( 256/8 )ÎªÒÆ¶¯Î»Êı */
-
-/*
-²ÉÓÃPark and Miller·½·¨²úÉú[0,1]Ö®¼ä¾ùÔÈ·Ö²¼µÄÎ±Ëæ»úÊı
-Ëã·¨ÏêÏ¸ÃèÊö¼û£º
-[1] NUMERICAL RECIPES IN C: THE ART OF SCIENTIFIC COMPUTING.
-Cambridge University Press. 1992. pp.278-279.
-[2] Park, S.K., and Miller, K.W. 1988, Communications of the ACM, 
-vol. 31, pp. 1192¨C1201.
-*/
-
-#define IA 16807
-#define IM 2147483647
-#define AM (1.0/IM)
-#define IQ 127773
-#define IR 2836
-#define MASK 123459876
-
-
-typedef struct __SpaceState {  /* ×´Ì¬¿Õ¼ä±äÁ¿ */
-	int xt;               /* x×ø±êÎ»ÖÃ */
-	int yt;               /* x×ø±êÎ»ÖÃ */
-	float v_xt;           /* x·½ÏòÔË¶¯ËÙ¶È */
-	float v_yt;           /* y·½ÏòÔË¶¯ËÙ¶È */
-	int Hxt;              /* x·½Ïò°ë´°¿í */
-	int Hyt;              /* y·½Ïò°ë´°¿í */
-	float at_dot;         /* ³ß¶È±ä»»ËÙ¶È */
+typedef struct __SpaceState {  /* çŠ¶æ€ç©ºé—´å˜é‡ */
+	int xt;               /* xåæ ‡ä½ç½® */
+	int yt;               /* yåæ ‡ä½ç½® */
+	float v_xt;           /* xæ–¹å‘è¿åŠ¨é€Ÿåº¦ */
+	float v_yt;           /* yæ–¹å‘è¿åŠ¨é€Ÿåº¦ */
+	int Hxt;              /* xæ–¹å‘åŠçª—å®½ */
+	int Hyt;              /* yæ–¹å‘åŠçª—å®½ */
+	float at_dot;         /* å°ºåº¦å˜æ¢é€Ÿåº¦ï¼Œç²’å­æ‰€ä»£è¡¨çš„é‚£ä¸€ç‰‡åŒºåŸŸçš„å°ºåº¦å˜åŒ–é€Ÿåº¦ */
 } SPACESTATE;
 
-
-bool pause=false;//ÊÇ·ñÔİÍ£
-bool track = false;//ÊÇ·ñ¸ú×Ù
-IplImage *curframe=NULL; 
-IplImage *pBackImg=NULL;
-IplImage *pFrontImg=NULL;
+bool pause=false;//æ˜¯å¦æš‚åœ
+bool track = false;//æ˜¯å¦è·Ÿè¸ª
+IplImage *curframe=NULL;
 IplImage *pTrackImg =NULL;
-unsigned char * img;//°Ñiplimg¸Äµ½char*  ±ãÓÚ¼ÆËã
-int xin,yin;//¸ú×ÙÊ±ÊäÈëµÄÖĞĞÄµã
-int xout,yout;//¸ú×ÙÊ±µÃµ½µÄÊä³öÖĞĞÄµã
-int Wid,Hei;//Í¼ÏñµÄ´óĞ¡
-int WidIn,HeiIn;//ÊäÈëµÄ°ë¿íÓë°ë¸ß
-int WidOut,HeiOut;//Êä³öµÄ°ë¿íÓë°ë¸ß
+unsigned char * img;//æŠŠiplimgæ”¹åˆ°char*  ä¾¿äºè®¡ç®—
+int xin,yin;//è·Ÿè¸ªæ—¶è¾“å…¥çš„ä¸­å¿ƒç‚¹
+int xout,yout;//è·Ÿè¸ªæ—¶å¾—åˆ°çš„è¾“å‡ºä¸­å¿ƒç‚¹
+int Wid,Hei;//å›¾åƒçš„å¤§å°
+int WidIn,HeiIn;//è¾“å…¥çš„åŠå®½ä¸åŠé«˜
+int WidOut,HeiOut;//è¾“å‡ºçš„åŠå®½ä¸åŠé«˜
 
-long ran_seed = 802163120; /* Ëæ»úÊıÖÖ×Ó£¬ÎªÈ«¾Ö±äÁ¿£¬ÉèÖÃÈ±Ê¡Öµ */
+float DELTA_T = (float)0.05;    /* å¸§é¢‘ï¼Œå¯ä»¥ä¸º30ï¼Œ25ï¼Œ15ï¼Œ10ç­‰ */
+float VELOCITY_DISTURB = 40.0;  /* é€Ÿåº¦æ‰°åŠ¨å¹…å€¼   */
+float SCALE_DISTURB = 0.0;      /* çª—å®½é«˜æ‰°åŠ¨å¹…åº¦ */
+float SCALE_CHANGE_D = (float)0.001;   /* å°ºåº¦å˜æ¢é€Ÿåº¦æ‰°åŠ¨å¹…åº¦ */
 
-float DELTA_T = (float)0.05;    /* Ö¡Æµ£¬¿ÉÒÔÎª30£¬25£¬15£¬10µÈ */
-int POSITION_DISTURB = 20; //15     /* Î»ÖÃÈÅ¶¯·ù¶È   */
-float VELOCITY_DISTURB = 40.0;  /* ËÙ¶ÈÈÅ¶¯·ùÖµ   */
-float SCALE_DISTURB = 0.0;      /* ´°¿í¸ßÈÅ¶¯·ù¶È */
-float SCALE_CHANGE_D = (float)0.001;   /* ³ß¶È±ä»»ËÙ¶ÈÈÅ¶¯·ù¶È */
-
-int NParticle = 100;       /* Á£×Ó¸öÊı   */
-float * ModelHist = NULL; /* Ä£ĞÍÖ±·½Í¼ */
-SPACESTATE * states = NULL;  /* ×´Ì¬Êı×é */
-float * weights = NULL;   /* Ã¿¸öÁ£×ÓµÄÈ¨ÖØ */
-int nbin;                 /* Ö±·½Í¼ÌõÊı */
-float Pi_Thres = (float)0.90; /* È¨ÖØãĞÖµ   */
-float Weight_Thres = (float)0.0001;  /* ×î´óÈ¨ÖØãĞÖµ£¬ÓÃÀ´ÅĞ¶ÏÊÇ·ñÄ¿±ê¶ªÊ§ */
+int NParticle = 100;       /* ç²’å­ä¸ªæ•°   */
+float * ModelHist = NULL; /* æ¨¡å‹ç›´æ–¹å›¾ */
+SPACESTATE * states = NULL;  /* çŠ¶æ€æ•°ç»„ */
+float * weights = NULL;   /* æ¯ä¸ªç²’å­çš„æƒé‡ */
+int nbin;                 /* ç›´æ–¹å›¾æ¡æ•° */
+float Pi_Thres = (float)0.90; /* æƒé‡é˜ˆå€¼   */
 
 int bSelectObject = 0;
 Point origin;
-Rect selection;
-/*
-ÉèÖÃÖÖ×ÓÊı
-Ò»°ãÀûÓÃÏµÍ³Ê±¼äÀ´½øĞĞÉèÖÃ£¬Ò²¿ÉÒÔÖ±½Ó´«ÈëÒ»¸ölongĞÍÕûÊı
-*/
-long set_seed( long setvalue )
-{
-	if ( setvalue != 0 ) /* Èç¹û´«ÈëµÄ²ÎÊısetvalue!=0£¬ÉèÖÃ¸ÃÊıÎªÖÖ×Ó */
-		ran_seed = setvalue;
-	else                 /* ·ñÔò£¬ÀûÓÃÏµÍ³Ê±¼äÎªÖÖ×ÓÊı */
-	{
-		ran_seed = time(NULL);
-	}
-	return( ran_seed );
-}
+Rect selection;//ä¸€ä¸ªçŸ©å½¢å¯¹è±¡
 
 /*
-¼ÆËãÒ»·ùÍ¼ÏñÖĞÄ³¸öÇøÓòµÄ²ÊÉ«Ö±·½Í¼·Ö²¼
-ÊäÈë²ÎÊı£º
-int x0, y0£º           Ö¸¶¨Í¼ÏñÇøÓòµÄÖĞĞÄµã
-int Wx, Hy£º           Ö¸¶¨Í¼ÏñÇøÓòµÄ°ë¿íºÍ°ë¸ß
-unsigned char * image£ºÍ¼ÏñÊı¾İ£¬°´´Ó×óÖÁÓÒ£¬´ÓÉÏÖÁÏÂµÄË³ĞòÉ¨Ãè£¬
-ÑÕÉ«ÅÅÁĞ´ÎĞò£ºRGB, RGB, ...
-(»òÕß£ºYUV, YUV, ...)
-int W, H£º             Í¼ÏñµÄ¿íºÍ¸ß
-Êä³ö²ÎÊı£º
-float * ColorHist£º    ²ÊÉ«Ö±·½Í¼£¬ÑÕÉ«Ë÷Òı°´£º
-i = r * G_BIN * B_BIN + g * B_BIN + bÅÅÁĞ
-int bins£º             ²ÊÉ«Ö±·½Í¼µÄÌõÊıR_BIN*G_BIN*B_BIN£¨ÕâÀïÈ¡8x8x8=512£©
+è®¡ç®—ä¸€å¹…å›¾åƒä¸­æŸä¸ªåŒºåŸŸçš„å½©è‰²ç›´æ–¹å›¾åˆ†å¸ƒ
+è¾“å…¥å‚æ•°ï¼š
+int x0, y0ï¼š           æŒ‡å®šå›¾åƒåŒºåŸŸçš„ä¸­å¿ƒç‚¹
+int Wx, Hyï¼š           æŒ‡å®šå›¾åƒåŒºåŸŸçš„åŠå®½å’ŒåŠé«˜
+unsigned char * imageï¼šå›¾åƒæ•°æ®ï¼ŒæŒ‰ä»å·¦è‡³å³ï¼Œä»ä¸Šè‡³ä¸‹çš„é¡ºåºæ‰«æï¼Œ
+é¢œè‰²æ’åˆ—æ¬¡åºï¼šRGB, RGB, ...
+(æˆ–è€…ï¼šYUV, YUV, ...)
+int W, Hï¼š             å›¾åƒçš„å®½å’Œé«˜
+è¾“å‡ºå‚æ•°ï¼š
+float * ColorHistï¼š    å½©è‰²ç›´æ–¹å›¾ï¼Œé¢œè‰²ç´¢å¼•æŒ‰ï¼š
+i = r * G_BIN * B_BIN + g * B_BIN + bæ’åˆ—
+int binsï¼š             å½©è‰²ç›´æ–¹å›¾çš„æ¡æ•°R_BIN*G_BIN*B_BINï¼ˆè¿™é‡Œå–8x8x8=512ï¼‰
 */
-void CalcuColorHistogram( int x0, int y0, int Wx, int Hy, 
+void CalcuColorHistogram( int x0, int y0, int Wx, int Hy,
 						 unsigned char * image, int W, int H,
 						 float * ColorHist, int bins )
 {
-	int x_begin, y_begin;  /* Ö¸¶¨Í¼ÏñÇøÓòµÄ×óÉÏ½Ç×ø±ê */
+	int x_begin, y_begin;  /* æŒ‡å®šå›¾åƒåŒºåŸŸçš„å·¦ä¸Šè§’åæ ‡ */
 	int y_end, x_end;
 	int x, y, i, index;
 	int r, g, b;
 	float k, r2, f;
 	int a2;
 
-	for ( i = 0; i < bins; i++ )     /* Ö±·½Í¼¸÷¸öÖµ¸³0 */
+	for ( i = 0; i < bins; i++ )     /* ç›´æ–¹å›¾å„ä¸ªå€¼èµ‹0 */
 		ColorHist[i] = 0.0;
-	/* ¿¼ÂÇÌØÊâÇé¿ö£ºx0, y0ÔÚÍ¼ÏñÍâÃæ£¬»òÕß£¬Wx<=0, Hy<=0 */
-	/* ´ËÊ±Ç¿ÖÆÁî²ÊÉ«Ö±·½Í¼Îª0 */
-	if ( ( x0 < 0 ) || (x0 >= W) || ( y0 < 0 ) || ( y0 >= H ) 
+	/* è€ƒè™‘ç‰¹æ®Šæƒ…å†µï¼šx0, y0åœ¨å›¾åƒå¤–é¢ï¼Œæˆ–è€…ï¼ŒWx<=0, Hy<=0 */
+	/* æ­¤æ—¶å¼ºåˆ¶ä»¤å½©è‰²ç›´æ–¹å›¾ä¸º0 */
+	if ( ( x0 < 0 ) || (x0 >= W) || ( y0 < 0 ) || ( y0 >= H )
 		|| ( Wx <= 0 ) || ( Hy <= 0 ) ) return;
 
-	x_begin = x0 - Wx;               /* ¼ÆËãÊµ¼Ê¸ß¿íºÍÇøÓòÆğÊ¼µã */
+	x_begin = x0 - Wx;               /* è®¡ç®—å®é™…é«˜å®½å’ŒåŒºåŸŸèµ·å§‹ç‚¹ */
 	y_begin = y0 - Hy;
 	if ( x_begin < 0 ) x_begin = 0;
 	if ( y_begin < 0 ) y_begin = 0;
 	x_end = x0 + Wx;
 	y_end = y0 + Hy;
-	if ( x_end >= W ) x_end = W-1;
+	if ( x_end >= W ) x_end = W-1;//è¶…å‡ºèŒƒå›´çš„è¯å°±ç”¨ç”»çš„æ¡†çš„è¾¹ç•Œæ¥èµ‹å€¼ç²’å­çš„åŒºåŸŸ
 	if ( y_end >= H ) y_end = H-1;
-	a2 = Wx*Wx+Hy*Hy;                /* ¼ÆËãºËº¯Êı°ë¾¶Æ½·½a^2 */
-	f = 0.0;                         /* ¹éÒ»»¯ÏµÊı */
+	a2 = Wx*Wx+Hy*Hy;                /* è®¡ç®—åŠå¾„å¹³æ–¹a^2 */
+	f = 0.0;                         /* å½’ä¸€åŒ–ç³»æ•° */
 	for ( y = y_begin; y <= y_end; y++ )
 		for ( x = x_begin; x <= x_end; x++ )
 		{
-			r = image[(y*W+x)*3] >> R_SHIFT;   /* ¼ÆËãÖ±·½Í¼ */
-			g = image[(y*W+x)*3+1] >> G_SHIFT; /*ÒÆÎ»Î»Êı¸ù¾İR¡¢G¡¢BÌõÊı */
+			r = image[(y*W+x)*3] >> R_SHIFT;   /* è®¡ç®—ç›´æ–¹å›¾ */
+			g = image[(y*W+x)*3+1] >> G_SHIFT; /*ç§»ä½ä½æ•°æ ¹æ®Rã€Gã€Bæ¡æ•° */
 			b = image[(y*W+x)*3+2] >> B_SHIFT;
-			index = r * G_BIN * B_BIN + g * B_BIN + b;
-			r2 = (float)(((y-y0)*(y-y0)+(x-x0)*(x-x0))*1.0/a2); /* ¼ÆËã°ë¾¶Æ½·½r^2 */
-			k = 1 - r2;   /* ºËº¯Êık(r) = 1-r^2, |r| < 1; ÆäËûÖµ k(r) = 0 */
+			index = r * G_BIN * B_BIN + g * B_BIN + b;//æŠŠå½“å‰rgbæ¢æˆä¸€ä¸ªç´¢å¼•
+			r2 = (float)(((y-y0)*(y-y0)+(x-x0)*(x-x0))*1.0/a2); /* è®¡ç®—åŠå¾„å¹³æ–¹r^2 */
+			k = 1 - r2;   /* k(r) = 1-r^2, |r| < 1; å…¶ä»–å€¼ k(r) = 0 ï¼Œå½±å“åŠ›*/
 			f = f + k;
-			ColorHist[index] = ColorHist[index] + k;  /* ¼ÆËãºËÃÜ¶È¼ÓÈ¨²ÊÉ«Ö±·½Í¼ */
+			ColorHist[index] = ColorHist[index] + k;  /* è®¡ç®—æ ¸å¯†åº¦åŠ æƒå½©è‰²ç›´æ–¹å›¾ */
 		}
-		for ( i = 0; i < bins; i++ )     /* ¹éÒ»»¯Ö±·½Í¼ */
+		for ( i = 0; i < bins; i++ )     /* å½’ä¸€åŒ–ç›´æ–¹å›¾ */
 			ColorHist[i] = ColorHist[i]/f;
 
 		return;
 }
 
 /*
-¼ÆËãBhattacharyyaÏµÊı
-ÊäÈë²ÎÊı£º
-float * p, * q£º      Á½¸ö²ÊÉ«Ö±·½Í¼ÃÜ¶È¹À¼Æ
-int bins£º            Ö±·½Í¼ÌõÊı
-·µ»ØÖµ£º
-BhattacharyyaÏµÊı
+è®¡ç®—Bhattacharyyaç³»æ•°
+è¾“å…¥å‚æ•°ï¼š
+float * p, * qï¼š      ä¸¤ä¸ªå½©è‰²ç›´æ–¹å›¾å¯†åº¦ä¼°è®¡
+int binsï¼š            ç›´æ–¹å›¾æ¡æ•°
+è¿”å›å€¼ï¼š
+Bhattacharyyaç³»æ•°
 */
 float CalcuBhattacharyya( float * p, float * q, int bins )
 {
@@ -179,75 +131,42 @@ float CalcuBhattacharyya( float * p, float * q, int bins )
 	rho = 0.0;
 	for ( i = 0; i < bins; i++ )
 		rho = (float)(rho + sqrt( p[i]*q[i] ));
-
 	return( rho );
 }
 
-
-/*# define RECIP_SIGMA  3.98942280401  / * 1/(sqrt(2*pi)*sigma), ÕâÀïsigma = 0.1 * /*/
-# define SIGMA2       0.02           /* 2*sigma^2, ÕâÀïsigma = 0.1 */
-
+# define SIGMA2       0.02
 float CalcuWeightedPi( float rho )
 {
 	float pi_n, d2;
-
 	d2 = 1 - rho;
-	//pi_n = (float)(RECIP_SIGMA * exp( - d2/SIGMA2 ));
 	pi_n = (float)(exp( - d2/SIGMA2 ));
-
 	return( pi_n );
 }
 
 /*
-²ÉÓÃPark and Miller·½·¨²úÉú[0,1]Ö®¼ä¾ùÔÈ·Ö²¼µÄÎ±Ëæ»úÊı
-Ëã·¨ÏêÏ¸ÃèÊö¼û£º
-[1] NUMERICAL RECIPES IN C: THE ART OF SCIENTIFIC COMPUTING.
-Cambridge University Press. 1992. pp.278-279.
-[2] Park, S.K., and Miller, K.W. 1988, Communications of the ACM, 
-vol. 31, pp. 1192¨C1201.
-*/
-
-float ran0(long *idum)
-{
-	long k;
-	float ans;
-
-	/* *idum ^= MASK;*/      /* XORing with MASK allows use of zero and other */
-	k=(*idum)/IQ;            /* simple bit patterns for idum.                 */
-	*idum=IA*(*idum-k*IQ)-IR*k;  /* Compute idum=(IA*idum) % IM without over- */
-	if (*idum < 0) *idum += IM;  /* flows by Schrage¡¯s method.               */
-	ans=AM*(*idum);          /* Convert idum to a floating result.            */
-	/* *idum ^= MASK;*/      /* Unmask before return.                         */
-	return ans;
-}
-
-
-/*
-»ñµÃÒ»¸ö[0,1]Ö®¼ä¾ùÔÈ·Ö²¼µÄËæ»úÊı
+è·å¾—ä¸€ä¸ª[0,1]ä¹‹é—´çš„éšæœºæ•°
 */
 float rand0_1()
 {
-	return( ran0( &ran_seed ) );
+	return(rand()/float(RAND_MAX));
 }
 
 
-
 /*
-»ñµÃÒ»¸öx - N(u,sigma)Gaussian·Ö²¼µÄËæ»úÊı
+è·å¾—ä¸€ä¸ªx - N(u,sigma)Gaussianåˆ†å¸ƒçš„éšæœºæ•°
 */
 float randGaussian( float u, float sigma )
 {
 	float x1, x2, v1, v2;
 	float s = 100.0;
 	float y;
-
 	/*
-	Ê¹ÓÃÉ¸Ñ¡·¨²úÉúÕıÌ¬·Ö²¼N(0,1)µÄËæ»úÊı(Box-Mulles·½·¨)
-	1. ²úÉú[0,1]ÉÏ¾ùÔÈËæ»ú±äÁ¿X1,X2
-	2. ¼ÆËãV1=2*X1-1,V2=2*X2-1,s=V1^2+V2^2
-	3. Èôs<=1,×ªÏò²½Öè4£¬·ñÔò×ª1
-	4. ¼ÆËãA=(-2ln(s)/s)^(1/2),y1=V1*A, y2=V2*A
-	y1,y2ÎªN(0,1)Ëæ»ú±äÁ¿
+	ä½¿ç”¨ç­›é€‰æ³•äº§ç”Ÿæ­£æ€åˆ†å¸ƒN(0,1)çš„éšæœºæ•°(Box-Mullesæ–¹æ³•)
+	1. äº§ç”Ÿ[0,1]ä¸Šå‡åŒ€éšæœºå˜é‡X1,X2
+	2. è®¡ç®—V1=2*X1-1,V2=2*X2-1,s=V1^2+V2^2
+	3. è‹¥s<=1,è½¬å‘æ­¥éª¤4ï¼Œå¦åˆ™è½¬1
+	4. è®¡ç®—A=(-2ln(s)/s)^(1/2),y1=V1*A, y2=V2*A
+	y1,y2ä¸ºN(0,1)éšæœºå˜é‡
 	*/
 	while ( s > 1.0 )
 	{
@@ -259,44 +178,36 @@ float randGaussian( float u, float sigma )
 	}
 	y = (float)(sqrt( -2.0 * log(s)/s ) * v1);
 	/*
-	¸ù¾İ¹«Ê½
+	æ ¹æ®å…¬å¼
 	z = sigma * y + u
-	½«y±äÁ¿×ª»»³ÉN(u,sigma)·Ö²¼
+	å°†yå˜é‡è½¬æ¢æˆN(u,sigma)åˆ†å¸ƒ
 	*/
-	return( sigma * y + u );	
+	return( sigma * y + u );
 }
 
 
 
 /*
-³õÊ¼»¯ÏµÍ³
-int x0, y0£º        ³õÊ¼¸ø¶¨µÄÍ¼ÏñÄ¿±êÇøÓò×ø±ê
-int Wx, Hy£º        Ä¿±êµÄ°ë¿í¸ß
-unsigned char * img£ºÍ¼ÏñÊı¾İ£¬RGBĞÎÊ½
-int W, H£º          Í¼Ïñ¿í¸ß
+åˆå§‹åŒ–ç³»ç»Ÿ
+int x0, y0ï¼š        åˆå§‹ç»™å®šçš„å›¾åƒç›®æ ‡åŒºåŸŸåæ ‡
+int Wx, Hyï¼š        ç›®æ ‡çš„åŠå®½é«˜
+unsigned char * imgï¼šå›¾åƒæ•°æ®ï¼ŒRGBå½¢å¼
+int W, Hï¼š          å›¾åƒå®½é«˜
 */
 int Initialize( int x0, int y0, int Wx, int Hy,
 			   unsigned char * img, int W, int H )
 {
 	int i, j;
-	float rn[7];
-
-	set_seed( 0 ); /* Ê¹ÓÃÏµÍ³Ê±ÖÓ×÷ÎªÖÖ×Ó£¬Õâ¸öº¯ÊıÔÚ */
-	/* ÏµÍ³³õÊ¼»¯Ê±ºòÒªµ÷ÓÃÒ»´Î,ÇÒ½öµ÷ÓÃ1´Î */
-	//NParticle = 75; /* ²ÉÑùÁ£×Ó¸öÊı */
-	//Pi_Thres = (float)0.90; /* ÉèÖÃÈ¨ÖØãĞÖµ */
-	states = new SPACESTATE [NParticle]; /* ÉêÇë×´Ì¬Êı×éµÄ¿Õ¼ä */
-	if ( states == NULL ) return( -2 );
-	weights = new float [NParticle];     /* ÉêÇëÁ£×ÓÈ¨ÖØÊı×éµÄ¿Õ¼ä */
-	if ( weights == NULL ) return( -3 );	
-	nbin = R_BIN * G_BIN * B_BIN; /* È·¶¨Ö±·½Í¼ÌõÊı */
-	ModelHist = new float [nbin]; /* ÉêÇëÖ±·½Í¼ÄÚ´æ */
+	srand((unsigned int)(time(NULL)));
+	states = new SPACESTATE [NParticle]; /* ç”³è¯·çŠ¶æ€æ•°ç»„çš„ç©ºé—´ */
+	weights = new float [NParticle];     /* ç”³è¯·ç²’å­æƒé‡æ•°ç»„çš„ç©ºé—´ */
+	nbin = R_BIN * G_BIN * B_BIN; /* ç¡®å®šç›´æ–¹å›¾æ¡æ•° */
+	ModelHist = new float [nbin]; /* ç”³è¯·ç›´æ–¹å›¾å†…å­˜ */
 	if ( ModelHist == NULL ) return( -1 );
 
-	/* ¼ÆËãÄ¿±êÄ£°åÖ±·½Í¼ */
+	/* è®¡ç®—ç›®æ ‡æ¨¡æ¿ç›´æ–¹å›¾ */
 	CalcuColorHistogram( x0, y0, Wx, Hy, img, W, H, ModelHist, nbin );
-
-	/* ³õÊ¼»¯Á£×Ó×´Ì¬(ÒÔ(x0,y0,1,1,Wx,Hy,0.1)ÎªÖĞĞÄ³ÊN(0,0.4)ÕıÌ¬·Ö²¼) */
+	/* åˆå§‹åŒ–ç²’å­çŠ¶æ€(ä»¥(x0,y0,1,1,Wx,Hy,0.1)ä¸ºä¸­å¿ƒå‘ˆN(0,0.4)æ­£æ€åˆ†å¸ƒ) */
 	states[0].xt = x0;
 	states[0].yt = y0;
 	states[0].v_xt = (float)0.0; // 1.0
@@ -305,9 +216,10 @@ int Initialize( int x0, int y0, int Wx, int Hy,
 	states[0].Hyt = Hy;
 	states[0].at_dot = (float)0.0; // 0.1
 	weights[0] = (float)(1.0/NParticle); /* 0.9; */
+	float rn[7];
 	for ( i = 1; i < NParticle; i++ )
 	{
-		for ( j = 0; j < 7; j++ ) rn[j] = randGaussian( 0, (float)0.6 ); /* ²úÉú7¸öËæ»ú¸ßË¹·Ö²¼µÄÊı */
+		for ( j = 0; j < 7; j++ ) rn[j] = randGaussian( 0, (float)0.6 ); /* äº§ç”Ÿ7ä¸ªéšæœºé«˜æ–¯åˆ†å¸ƒçš„æ•° */
 		states[i].xt = (int)( states[0].xt + rn[0] * Wx );
 		states[i].yt = (int)( states[0].yt + rn[1] * Hy );
 		states[i].v_xt = (float)( states[0].v_xt + rn[2] * VELOCITY_DISTURB );
@@ -315,29 +227,28 @@ int Initialize( int x0, int y0, int Wx, int Hy,
 		states[i].Hxt = (int)( states[0].Hxt + rn[4] * SCALE_DISTURB );
 		states[i].Hyt = (int)( states[0].Hyt + rn[5] * SCALE_DISTURB );
 		states[i].at_dot = (float)( states[0].at_dot + rn[6] * SCALE_CHANGE_D );
-		/* È¨ÖØÍ³Ò»Îª1/N£¬ÈÃÃ¿¸öÁ£×ÓÓĞÏàµÈµÄ»ú»á */
+		/* æƒé‡ç»Ÿä¸€ä¸º1/Nï¼Œè®©æ¯ä¸ªç²’å­æœ‰ç›¸ç­‰çš„æœºä¼š */
 		weights[i] = (float)(1.0/NParticle);
 	}
-
 	return( 1 );
 }
 
 
 
 /*
-¼ÆËã¹éÒ»»¯ÀÛ¼Æ¸ÅÂÊc'_i
-ÊäÈë²ÎÊı£º
-float * weight£º    ÎªÒ»¸öÓĞN¸öÈ¨ÖØ£¨¸ÅÂÊ£©µÄÊı×é
-int N£º             Êı×éÔªËØ¸öÊı
-Êä³ö²ÎÊı£º
-float * cumulateWeight£º ÎªÒ»¸öÓĞN+1¸öÀÛ¼ÆÈ¨ÖØµÄÊı×é£¬
+è®¡ç®—å½’ä¸€åŒ–ç´¯è®¡æ¦‚ç‡c'_i
+è¾“å…¥å‚æ•°ï¼š
+float * weightï¼š    ä¸ºä¸€ä¸ªæœ‰Nä¸ªæƒé‡ï¼ˆæ¦‚ç‡ï¼‰çš„æ•°ç»„
+int Nï¼š             æ•°ç»„å…ƒç´ ä¸ªæ•°
+è¾“å‡ºå‚æ•°ï¼š
+float * cumulateWeightï¼š ä¸ºä¸€ä¸ªæœ‰N+1ä¸ªç´¯è®¡æƒé‡çš„æ•°ç»„ï¼Œ
 cumulateWeight[0] = 0;
 */
 void NormalizeCumulatedWeight( float * weight, float * cumulateWeight, int N )
 {
 	int i;
 
-	for ( i = 0; i < N+1; i++ ) 
+	for ( i = 0; i < N+1; i++ )
 		cumulateWeight[i] = 0;
 	for ( i = 0; i < N; i++ )
 		cumulateWeight[i+1] = cumulateWeight[i] + weight[i];
@@ -348,13 +259,13 @@ void NormalizeCumulatedWeight( float * weight, float * cumulateWeight, int N )
 }
 
 /*
-ÕÛ°ë²éÕÒ£¬ÔÚÊı×éNCumuWeight[N]ÖĞÑ°ÕÒÒ»¸ö×îĞ¡µÄj£¬Ê¹µÃ
+æŠ˜åŠæŸ¥æ‰¾ï¼Œåœ¨æ•°ç»„NCumuWeight[N]ä¸­å¯»æ‰¾ä¸€ä¸ªæœ€å°çš„jï¼Œä½¿å¾—
 NCumuWeight[j] <=v
-float v£º              Ò»¸ö¸ø¶¨µÄËæ»úÊı
-float * NCumuWeight£º  È¨ÖØÊı×é
-int N£º                Êı×éÎ¬Êı
-·µ»ØÖµ£º
-Êı×éÏÂ±êĞòºÅ
+float vï¼š              ä¸€ä¸ªç»™å®šçš„éšæœºæ•°
+float * NCumuWeightï¼š  æƒé‡æ•°ç»„
+int Nï¼š                æ•°ç»„ç»´æ•°
+è¿”å›å€¼ï¼š
+æ•°ç»„ä¸‹æ ‡åºå·
 */
 int BinearySearch( float v, float * NCumuWeight, int N )
 {
@@ -372,53 +283,53 @@ int BinearySearch( float v, float * NCumuWeight, int N )
 }
 
 /*
-ÖØĞÂ½øĞĞÖØÒªĞÔ²ÉÑù
-ÊäÈë²ÎÊı£º
-float * c£º          ¶ÔÓ¦Ñù±¾È¨ÖØÊı×épi(n)
-int N£º              È¨ÖØÊı×é¡¢ÖØ²ÉÑùË÷ÒıÊı×éÔªËØ¸öÊı
-Êä³ö²ÎÊı£º
-int * ResampleIndex£ºÖØ²ÉÑùË÷ÒıÊı×é
+é‡æ–°è¿›è¡Œé‡è¦æ€§é‡‡æ ·
+è¾“å…¥å‚æ•°ï¼š
+float * cï¼š          å¯¹åº”æ ·æœ¬æƒé‡æ•°ç»„pi(n)
+int Nï¼š              æƒé‡æ•°ç»„ã€é‡é‡‡æ ·ç´¢å¼•æ•°ç»„å…ƒç´ ä¸ªæ•°
+è¾“å‡ºå‚æ•°ï¼š
+int * ResampleIndexï¼šé‡é‡‡æ ·ç´¢å¼•æ•°ç»„
 */
 void ImportanceSampling( float * c, int * ResampleIndex, int N )
 {
 	float rnum, * cumulateWeight;
 	int i, j;
 
-	cumulateWeight = new float [N+1]; /* ÉêÇëÀÛ¼ÆÈ¨ÖØÊı×éÄÚ´æ£¬´óĞ¡ÎªN+1 */
-	NormalizeCumulatedWeight( c, cumulateWeight, N ); /* ¼ÆËãÀÛ¼ÆÈ¨ÖØ */
+	cumulateWeight = new float [N+1]; /* ç”³è¯·ç´¯è®¡æƒé‡æ•°ç»„å†…å­˜ï¼Œå¤§å°ä¸ºN+1 */
+	NormalizeCumulatedWeight( c, cumulateWeight, N ); /* è®¡ç®—ç´¯è®¡æƒé‡ */
 	for ( i = 0; i < N; i++ )
 	{
-		rnum = rand0_1();       /* Ëæ»ú²úÉúÒ»¸ö[0,1]¼ä¾ùÔÈ·Ö²¼µÄÊı */ 
-		j = BinearySearch( rnum, cumulateWeight, N+1 ); /* ËÑË÷<=rnumµÄ×îĞ¡Ë÷Òıj */
+		rnum = rand0_1();       /* éšæœºäº§ç”Ÿä¸€ä¸ª[0,1]é—´å‡åŒ€åˆ†å¸ƒçš„æ•° */
+		j = BinearySearch( rnum, cumulateWeight, N+1 ); /* æœç´¢<=rnumçš„æœ€å°ç´¢å¼•j */
 		if ( j == N ) j--;
-		ResampleIndex[i] = j;	/* ·ÅÈëÖØ²ÉÑùË÷ÒıÊı×é */		
+		ResampleIndex[i] = j;	/* æ”¾å…¥é‡é‡‡æ ·ç´¢å¼•æ•°ç»„ */
 	}
 
 	delete[] cumulateWeight;
 
-	return;	
+	return;
 }
 
 /*
-Ñù±¾Ñ¡Ôñ£¬´ÓN¸öÊäÈëÑù±¾ÖĞ¸ù¾İÈ¨ÖØÖØĞÂÌôÑ¡³öN¸ö
-ÊäÈë²ÎÊı£º
-SPACESTATE * state£º     Ô­Ê¼Ñù±¾¼¯ºÏ£¨¹²N¸ö£©
-float * weight£º         N¸öÔ­Ê¼Ñù±¾¶ÔÓ¦µÄÈ¨ÖØ
-int N£º                  Ñù±¾¸öÊı
-Êä³ö²ÎÊı£º
-SPACESTATE * state£º     ¸üĞÂ¹ıµÄÑù±¾¼¯
+æ ·æœ¬é€‰æ‹©ï¼Œä»Nä¸ªè¾“å…¥æ ·æœ¬ä¸­æ ¹æ®æƒé‡é‡æ–°æŒ‘é€‰å‡ºNä¸ª
+è¾“å…¥å‚æ•°ï¼š
+SPACESTATE * stateï¼š     åŸå§‹æ ·æœ¬é›†åˆï¼ˆå…±Nä¸ªï¼‰
+float * weightï¼š         Nä¸ªåŸå§‹æ ·æœ¬å¯¹åº”çš„æƒé‡
+int Nï¼š                  æ ·æœ¬ä¸ªæ•°
+è¾“å‡ºå‚æ•°ï¼š
+SPACESTATE * stateï¼š     æ›´æ–°è¿‡çš„æ ·æœ¬é›†
 */
 void ReSelect( SPACESTATE * state, float * weight, int N )
 {
-	SPACESTATE * tmpState;
-	int i, * rsIdx;
+	SPACESTATE * tmpState;//æ–°çš„æ”¾ç‹—çš„åœ°æ–¹
+	int i, * rsIdx;//ç»Ÿè®¡çš„éšæœºæ•°æ‰€æ‰åŒºé—´çš„ç´¢å¼•
 
 	tmpState = new SPACESTATE[N];
 	rsIdx = new int[N];
 
-	ImportanceSampling( weight, rsIdx, N ); /* ¸ù¾İÈ¨ÖØÖØĞÂ²ÉÑù */
+	ImportanceSampling( weight, rsIdx, N ); /* æ ¹æ®æƒé‡é‡æ–°é‡‡æ · */
 	for ( i = 0; i < N; i++ )
-		tmpState[i] = state[rsIdx[i]];//temStateÎªÁÙÊ±±äÁ¿,ÆäÖĞstate[i]ÓÃstate[rsIdx[i]]À´´úÌæ
+		tmpState[i] = state[rsIdx[i]];//temStateä¸ºä¸´æ—¶å˜é‡,å…¶ä¸­state[i]ç”¨state[rsIdx[i]]æ¥ä»£æ›¿
 	for ( i = 0; i < N; i++ )
 		state[i] = tmpState[i];
 
@@ -429,14 +340,14 @@ void ReSelect( SPACESTATE * state, float * weight, int N )
 }
 
 /*
-´«²¥£º¸ù¾İÏµÍ³×´Ì¬·½³ÌÇóÈ¡×´Ì¬Ô¤²âÁ¿
-×´Ì¬·½³ÌÎª£º S(t) = A S(t-1) + W(t-1)
-W(t-1)Îª¸ßË¹ÔëÉù
-ÊäÈë²ÎÊı£º
-SPACESTATE * state£º      ´ıÇóµÄ×´Ì¬Á¿Êı×é
-int N£º                   ´ıÇó×´Ì¬¸öÊı
-Êä³ö²ÎÊı£º
-SPACESTATE * state£º      ¸üĞÂºóµÄÔ¤²â×´Ì¬Á¿Êı×é
+ä¼ æ’­ï¼šæ ¹æ®ç³»ç»ŸçŠ¶æ€æ–¹ç¨‹æ±‚å–çŠ¶æ€é¢„æµ‹é‡
+çŠ¶æ€æ–¹ç¨‹ä¸ºï¼š S(t) = A S(t-1) + W(t-1)
+W(t-1)ä¸ºé«˜æ–¯å™ªå£°
+è¾“å…¥å‚æ•°ï¼š
+SPACESTATE * stateï¼š      å¾…æ±‚çš„çŠ¶æ€é‡æ•°ç»„
+int Nï¼š                   å¾…æ±‚çŠ¶æ€ä¸ªæ•°
+è¾“å‡ºå‚æ•°ï¼š
+SPACESTATE * stateï¼š      æ›´æ–°åçš„é¢„æµ‹çŠ¶æ€é‡æ•°ç»„
 */
 void Propagate( SPACESTATE * state, int N )
 {
@@ -444,10 +355,10 @@ void Propagate( SPACESTATE * state, int N )
 	int j;
 	float rn[7];
 
-	/* ¶ÔÃ¿Ò»¸ö×´Ì¬ÏòÁ¿state[i](¹²N¸ö)½øĞĞ¸üĞÂ */
-	for ( i = 0; i < N; i++ )  /* ¼ÓÈë¾ùÖµÎª0µÄËæ»ú¸ßË¹ÔëÉù */
+	/* å¯¹æ¯ä¸€ä¸ªçŠ¶æ€å‘é‡state[i](å…±Nä¸ª)è¿›è¡Œæ›´æ–° */
+	for ( i = 0; i < N; i++ )  /* åŠ å…¥å‡å€¼ä¸º0çš„éšæœºé«˜æ–¯å™ªå£° */
 	{
-		for ( j = 0; j < 7; j++ ) rn[j] = randGaussian( 0, (float)0.6 ); /* ²úÉú7¸öËæ»ú¸ßË¹·Ö²¼µÄÊı */
+		for ( j = 0; j < 7; j++ ) rn[j] = randGaussian( 0, (float)0.6 ); /* äº§ç”Ÿ7ä¸ªéšæœºé«˜æ–¯åˆ†å¸ƒçš„æ•° */
 		state[i].xt = (int)(state[i].xt + state[i].v_xt * DELTA_T + rn[0] * state[i].Hxt + 0.5);
 		state[i].yt = (int)(state[i].yt + state[i].v_yt * DELTA_T + rn[1] * state[i].Hyt + 0.5);
 		state[i].v_xt = (float)(state[i].v_xt + rn[2] * VELOCITY_DISTURB);
@@ -461,18 +372,18 @@ void Propagate( SPACESTATE * state, int N )
 }
 
 /*
-¹Û²â£¬¸ù¾İ×´Ì¬¼¯ºÏStÖĞµÄÃ¿Ò»¸ö²ÉÑù£¬¹Û²âÖ±·½Í¼£¬È»ºó
-¸üĞÂ¹À¼ÆÁ¿£¬»ñµÃĞÂµÄÈ¨ÖØ¸ÅÂÊ
-ÊäÈë²ÎÊı£º
-SPACESTATE * state£º      ×´Ì¬Á¿Êı×é
-int N£º                   ×´Ì¬Á¿Êı×éÎ¬Êı
-unsigned char * image£º   Í¼ÏñÊı¾İ£¬°´´Ó×óÖÁÓÒ£¬´ÓÉÏÖÁÏÂµÄË³ĞòÉ¨Ãè£¬
-ÑÕÉ«ÅÅÁĞ´ÎĞò£ºRGB, RGB, ...						 
-int W, H£º                Í¼ÏñµÄ¿íºÍ¸ß
-float * ObjectHist£º      Ä¿±êÖ±·½Í¼
-int hbins£º               Ä¿±êÖ±·½Í¼ÌõÊı
-Êä³ö²ÎÊı£º
-float * weight£º          ¸üĞÂºóµÄÈ¨ÖØ
+è§‚æµ‹ï¼Œæ ¹æ®çŠ¶æ€é›†åˆStä¸­çš„æ¯ä¸€ä¸ªé‡‡æ ·ï¼Œè§‚æµ‹ç›´æ–¹å›¾ï¼Œç„¶å
+æ›´æ–°ä¼°è®¡é‡ï¼Œè·å¾—æ–°çš„æƒé‡æ¦‚ç‡
+è¾“å…¥å‚æ•°ï¼š
+SPACESTATE * stateï¼š      çŠ¶æ€é‡æ•°ç»„
+int Nï¼š                   çŠ¶æ€é‡æ•°ç»„ç»´æ•°
+unsigned char * imageï¼š   å›¾åƒæ•°æ®ï¼ŒæŒ‰ä»å·¦è‡³å³ï¼Œä»ä¸Šè‡³ä¸‹çš„é¡ºåºæ‰«æï¼Œ
+é¢œè‰²æ’åˆ—æ¬¡åºï¼šRGB, RGB, ...
+int W, Hï¼š                å›¾åƒçš„å®½å’Œé«˜
+float * ObjectHistï¼š      ç›®æ ‡ç›´æ–¹å›¾
+int hbinsï¼š               ç›®æ ‡ç›´æ–¹å›¾æ¡æ•°
+è¾“å‡ºå‚æ•°ï¼š
+float * weightï¼š          æ›´æ–°åçš„æƒé‡
 */
 void Observe( SPACESTATE * state, float * weight, int N,
 			 unsigned char * image, int W, int H,
@@ -486,30 +397,30 @@ void Observe( SPACESTATE * state, float * weight, int N,
 
 	for ( i = 0; i < N; i++ )
 	{
-		/* (1) ¼ÆËã²ÊÉ«Ö±·½Í¼·Ö²¼ */
+		/* (1) è®¡ç®—å½©è‰²ç›´æ–¹å›¾åˆ†å¸ƒ */
 		CalcuColorHistogram( state[i].xt, state[i].yt,state[i].Hxt, state[i].Hyt,
 			image, W, H, ColorHist, hbins );
-		/* (2) BhattacharyyaÏµÊı */
+		/* (2) Bhattacharyyaç³»æ•° */
 		rho = CalcuBhattacharyya( ColorHist, ObjectHist, hbins );
-		/* (3) ¸ù¾İ¼ÆËãµÃµÄBhattacharyyaÏµÊı¼ÆËã¸÷¸öÈ¨ÖØÖµ */
-		weight[i] = CalcuWeightedPi( rho );		
+		/* (3) æ ¹æ®è®¡ç®—å¾—çš„Bhattacharyyaç³»æ•°è®¡ç®—å„ä¸ªæƒé‡å€¼ */
+		weight[i] = CalcuWeightedPi( rho );
 	}
 
 	delete[] ColorHist;
 
-	return;	
+	return;
 }
 
 /*
-¹À¼Æ£¬¸ù¾İÈ¨ÖØ£¬¹À¼ÆÒ»¸ö×´Ì¬Á¿×÷Îª¸ú×ÙÊä³ö
-ÊäÈë²ÎÊı£º
-SPACESTATE * state£º      ×´Ì¬Á¿Êı×é
-float * weight£º          ¶ÔÓ¦È¨ÖØ
-int N£º                   ×´Ì¬Á¿Êı×éÎ¬Êı
-Êä³ö²ÎÊı£º
-SPACESTATE * EstState£º   ¹À¼Æ³öµÄ×´Ì¬Á¿
+ä¼°è®¡ï¼Œæ ¹æ®æƒé‡ï¼Œä¼°è®¡ä¸€ä¸ªçŠ¶æ€é‡ä½œä¸ºè·Ÿè¸ªè¾“å‡º
+è¾“å…¥å‚æ•°ï¼š
+SPACESTATE * stateï¼š      çŠ¶æ€é‡æ•°ç»„
+float * weightï¼š          å¯¹åº”æƒé‡
+int Nï¼š                   çŠ¶æ€é‡æ•°ç»„ç»´æ•°
+è¾“å‡ºå‚æ•°ï¼š
+SPACESTATE * EstStateï¼š   ä¼°è®¡å‡ºçš„çŠ¶æ€é‡
 */
-void Estimation( SPACESTATE * state, float * weight, int N, 
+void Estimation( SPACESTATE * state, float * weight, int N,
 				SPACESTATE & EstState )
 {
 	int i;
@@ -521,7 +432,7 @@ void Estimation( SPACESTATE * state, float * weight, int N,
 	v_xt = 0;	v_yt = 0;
 	xt = 0;  	yt = 0;
 	weight_sum = 0;
-	for ( i = 0; i < N; i++ ) /* ÇóºÍ */
+	for ( i = 0; i < N; i++ ) /* æ±‚å’Œ */
 	{
 		at_dot += state[i].at_dot * weight[i];
 		Hxt += state[i].Hxt * weight[i];
@@ -532,79 +443,75 @@ void Estimation( SPACESTATE * state, float * weight, int N,
 		yt += state[i].yt * weight[i];
 		weight_sum += weight[i];
 	}
-	/* ÇóÆ½¾ù */
-	if ( weight_sum <= 0 ) weight_sum = 1; /* ·ÀÖ¹±»0³ı£¬Ò»°ã²»»á·¢Éú */
+	/* æ±‚å¹³å‡ */
+	if ( weight_sum <= 0 ) weight_sum = 1; /* é˜²æ­¢è¢«0é™¤ï¼Œä¸€èˆ¬ä¸ä¼šå‘ç”Ÿ */
 	EstState.at_dot = at_dot/weight_sum;
-	EstState.Hxt = (int)(Hxt/weight_sum + 0.5 );
-	EstState.Hyt = (int)(Hyt/weight_sum + 0.5 );
+	EstState.Hxt = (int)(Hxt/weight_sum);
+	EstState.Hyt = (int)(Hyt/weight_sum);
 	EstState.v_xt = v_xt/weight_sum;
 	EstState.v_yt = v_yt/weight_sum;
-	EstState.xt = (int)(xt/weight_sum + 0.5 );
-	EstState.yt = (int)(yt/weight_sum + 0.5 );
+	EstState.xt = (int)(xt/weight_sum);
+	EstState.yt = (int)(yt/weight_sum);
 
 	return;
 }
 
 
 /************************************************************
-Ä£ĞÍ¸üĞÂ
-ÊäÈë²ÎÊı£º
-SPACESTATE EstState£º   ×´Ì¬Á¿µÄ¹À¼ÆÖµ
-float * TargetHist£º    Ä¿±êÖ±·½Í¼
-int bins£º              Ö±·½Í¼ÌõÊı
-float PiT£º             ãĞÖµ£¨È¨ÖØãĞÖµ£©
-unsigned char * img£º   Í¼ÏñÊı¾İ£¬RGBĞÎÊ½
-int W, H£º              Í¼Ïñ¿í¸ß 
-Êä³ö£º
-float * TargetHist£º    ¸üĞÂµÄÄ¿±êÖ±·½Í¼
+æ¨¡å‹æ›´æ–°
+è¾“å…¥å‚æ•°ï¼š
+SPACESTATE EstStateï¼š   çŠ¶æ€é‡çš„ä¼°è®¡å€¼
+float * TargetHistï¼š    ç›®æ ‡ç›´æ–¹å›¾
+int binsï¼š              ç›´æ–¹å›¾æ¡æ•°
+float PiTï¼š             é˜ˆå€¼ï¼ˆæƒé‡é˜ˆå€¼ï¼‰
+unsigned char * imgï¼š   å›¾åƒæ•°æ®ï¼ŒRGBå½¢å¼
+int W, Hï¼š              å›¾åƒå®½é«˜
+è¾“å‡ºï¼š
+float * TargetHistï¼š    æ›´æ–°çš„ç›®æ ‡ç›´æ–¹å›¾
 ************************************************************/
-# define ALPHA_COEFFICIENT      0.2     /* Ä¿±êÄ£ĞÍ¸üĞÂÈ¨ÖØÈ¡0.1-0.3 */
+# define ALPHA_COEFFICIENT      0.2     /* ç›®æ ‡æ¨¡å‹æ›´æ–°æƒé‡*/
 
-int ModelUpdate( SPACESTATE EstState, float * TargetHist, int bins, float PiT,
-				unsigned char * img, int W, int H )
+void ModelUpdate( SPACESTATE EstState, float * TargetHist, int bins, float PiT,
+				 unsigned char * img, int W, int H )
 {
 	float * EstHist, Bha, Pi_E;
-	int i, rvalue = -1;
+	int i;
 
 	EstHist = new float [bins];
 
-	/* (1)ÔÚ¹À¼ÆÖµ´¦¼ÆËãÄ¿±êÖ±·½Í¼ */
-	CalcuColorHistogram( EstState.xt, EstState.yt, EstState.Hxt, 
+	/* (1)åœ¨ä¼°è®¡å€¼å¤„è®¡ç®—ç›®æ ‡ç›´æ–¹å›¾ */
+	CalcuColorHistogram( EstState.xt, EstState.yt, EstState.Hxt,
 		EstState.Hyt, img, W, H, EstHist, bins );
-	/* (2)¼ÆËãBhattacharyyaÏµÊı */
+	/* (2)è®¡ç®—Bhattacharyyaç³»æ•° */
 	Bha  = CalcuBhattacharyya( EstHist, TargetHist, bins );
-	/* (3)¼ÆËã¸ÅÂÊÈ¨ÖØ */
+	/* (3)è®¡ç®—æ¦‚ç‡æƒé‡ */
 	Pi_E = CalcuWeightedPi( Bha );
 
-	if ( Pi_E > PiT ) 
+	if ( Pi_E > PiT )
 	{
 		for ( i = 0; i < bins; i++ )
 		{
 			TargetHist[i] = (float)((1.0 - ALPHA_COEFFICIENT) * TargetHist[i]
 			+ ALPHA_COEFFICIENT * EstHist[i]);
 		}
-		rvalue = 1;
 	}
-
 	delete[] EstHist;
-
-	return( rvalue );
 }
 
 /*
-ÏµÍ³Çå³ı
+ç³»ç»Ÿæ¸…é™¤
 */
 void ClearAll()
 {
 	if ( ModelHist != NULL ) delete [] ModelHist;
 	if ( states != NULL ) delete [] states;
 	if ( weights != NULL ) delete [] weights;
-
+	if (img != NULL) delete [] img;
 	return;
 }
 
 
-int ColorParticleTracking( unsigned char * image, int W, int H, 
+int ColorParticleTracking( unsigned char * image, int W, int H,
 						  int & xc, int & yc, int & Wx_h, int & Hy_h,
 						  float & max_weight )
 {
@@ -612,38 +519,37 @@ int ColorParticleTracking( unsigned char * image, int W, int H,
 	int i;
 
 	ReSelect( states, weights, NParticle );
-	/* ´«²¥£º²ÉÑù×´Ì¬·½³Ì£¬¶Ô×´Ì¬±äÁ¿½øĞĞÔ¤²â */
+	/* ä¼ æ’­ï¼šé‡‡æ ·çŠ¶æ€æ–¹ç¨‹ï¼Œå¯¹çŠ¶æ€å˜é‡è¿›è¡Œé¢„æµ‹ */
 	Propagate( states, NParticle );
-	/* ¹Û²â£º¶Ô×´Ì¬Á¿½øĞĞ¸üĞÂ */
+	/* è§‚æµ‹ï¼šå¯¹çŠ¶æ€é‡è¿›è¡Œæ›´æ–° */
 	Observe( states, weights, NParticle, image, W, H,
 		ModelHist, nbin );
-	/* ¹À¼Æ£º¶Ô×´Ì¬Á¿½øĞĞ¹À¼Æ£¬ÌáÈ¡Î»ÖÃÁ¿ */
+	/* ä¼°è®¡ï¼šå¯¹çŠ¶æ€é‡è¿›è¡Œä¼°è®¡ï¼Œæå–ä½ç½®é‡ */
 	Estimation( states, weights, NParticle, EState );
 	xc = EState.xt;
 	yc = EState.yt;
 	Wx_h = EState.Hxt;
 	Hy_h = EState.Hyt;
-	/* Ä£ĞÍ¸üĞÂ */
+	/* æ¨¡å‹æ›´æ–° */
 	ModelUpdate( EState, ModelHist, nbin, Pi_Thres,	image, W, H );
-
-	/* ¼ÆËã×î´óÈ¨ÖØÖµ */
+	/* è®¡ç®—æœ€å¤§æƒé‡å€¼ */
 	max_weight = weights[0];
 	for ( i = 1; i < NParticle; i++ )
 		max_weight = max_weight < weights[i] ? weights[i] : max_weight;
-	/* ½øĞĞºÏ·¨ĞÔ¼ìÑé£¬²»ºÏ·¨·µ»Ø-1 */
-	if ( xc < 0 || yc < 0 || xc >= W || yc >= H ||
-		Wx_h <= 0 || Hy_h <= 0 ) return( -1 );
-	else 
-		return( 1 );		
+	/* è¿›è¡Œåˆæ³•æ€§æ£€éªŒï¼Œä¸åˆæ³•è¿”å›-1 */
+	if ( xc < 0 || yc < 0 || xc >= W || yc >= H || Wx_h <= 0 || Hy_h <= 0 )
+		return( -1 );
+	else
+		return( 1 );
 }
 
 
 
-//°Ñiplimage ×ªµ½img Êı×éÖĞ
+//æŠŠiplimage è½¬åˆ°img æ•°ç»„ä¸­
 void IplToImge(IplImage* src, int w,int h)
 {
 	int i,j;
-	for ( j = 0; j < h; j++ ) // ×ª³ÉÕıÏòÍ¼Ïñ
+	for ( j = 0; j < h; j++ )
 		for ( i = 0; i < w; i++ )
 		{
 			img[ ( j*w+i )*3 ] = R(src,i,j);
@@ -657,7 +563,7 @@ void mouseHandler( int event , int x, int y, int flags, void* param)
 {
 	int centerx,centery;
 
-	if( bSelectObject)
+	if( bSelectObject)//å¦‚æœç”»äº†æ–¹æ¡†
 	{
 		selection.x = MIN(x,origin.x);
 		selection.y = MIN(y,origin.y);
@@ -667,166 +573,87 @@ void mouseHandler( int event , int x, int y, int flags, void* param)
 
 	switch(event)
 	{
-	case CV_EVENT_LBUTTONDOWN://°´ÏÂ×ó¼üÊ±
-		origin  = Point(x,y);
-		selection = Rect(x,y,0,0);
+	case CV_EVENT_LBUTTONDOWN://æŒ‰ä¸‹å·¦é”®æ—¶
+		origin  = Point(x,y);//å£°æ˜ä¸€ä¸ªç‚¹çš„ä½ç½® originå³æŒ‰ä¸‹é¼ æ ‡çš„èµ·å§‹ç‚¹çš„ä½ç½®
+		selection = Rect(x,y,0,0);//æ¡†çš„æ„é€ å‡½æ•° çŸ©å½¢ç±»
 		bSelectObject = 1;
-		pause = false;
+		pause = true;
 		break;
-	case CV_EVENT_LBUTTONUP://ÊÍ·Å×ó¼üÊ±
+	case CV_EVENT_LBUTTONUP://é‡Šæ”¾å·¦é”®æ—¶
 		bSelectObject = 0;
-		centerx = selection.x + selection.width;
-		centery = selection.y + selection.height;
+		centerx = selection.x + selection.width/2;
+		centery = selection.y + selection.height/2;
 		WidIn = selection.width / 2;
 		HeiIn = selection.height / 2;
 		Initialize( centerx, centery, WidIn, HeiIn, img, Wid, Hei );
 		track = true;
-		//pause = true;
+		pause = false;
 		break;
 	}
 }
 
-void mouseHandler1(int event, int x, int y, int flags, void* param)//ÔÚÕâÀïÒª×¢Òâµ½ÒªÔÙ´Îµ÷ÓÃcvShowImage£¬²ÅÄÜÏÔÊ¾·½¿ò
+void main(int argc, char *argv[])//å‚æ•°çš„ä¸ªæ•°  å‚æ•°
 {
-	CvMemStorage* storage = cvCreateMemStorage(0);
-	CvSeq * contours;
-	IplImage* pFrontImg1 = 0;
-	int centerX,centerY;
-	int delt = 10;
-	pFrontImg1=cvCloneImage(pFrontImg);//ÕâÀïÒ²Òª×¢Òâµ½Èç¹ûÔÚ cvShowImage("foreground",pFrontImg1)ÖĞÓÃpFrontImg²úĞ§¹û£¬µÃÖØĞÂ¶¨Òå²¢¸´ÖÆ
-	switch(event){
-	  case CV_EVENT_LBUTTONDOWN:	
-		  //Ñ°ÕÒÂÖÀª
-		  cout<<"********"<<endl;
-		  if(1)
-		  {
-			  //ÔÚpFrontImgÖĞÑ¡È¡Á¬Í¨Óò
-			  cvFindContours(pFrontImg,storage,&contours,sizeof(CvContour),CV_RETR_EXTERNAL,
-				  CV_CHAIN_APPROX_SIMPLE);
-
-			  //ÔÚÔ­³¡¾°ÖĞ»æÖÆÄ¿±êÂÖÀªµÄÍâ½Ó¾ØĞÎ
-			  for (;contours;contours = contours->h_next)   
-			  {
-				  CvRect r = ((CvContour*)contours)->rect;
-				  if(x>r.x&&x<(r.x+r.width)&&y>r.y&&r.y<(r.y+r.height))
-				  {
-					  if (r.height*r.width>CONTOUR_MIN_AREA && r.height*r.width<CONTOUR_MAX_AREA)
-					  {
-						  centerX = r.x+r.width/2;//µÃµ½Ä¿±êÖĞĞÄµã
-						  centerY = r.y+r.height/2;
-						  WidIn = r.width/2;//µÃµ½Ä¿±ê°ë¿íÓë°ë¸ß
-						  HeiIn = r.height/2;
-						  xin = centerX;
-						  yin = centerY;
-						  cvRectangle(pFrontImg1,cvPoint(r.x,r.y),cvPoint(r.x+r.width,r.y+r.height),cvScalar(255,0,0),2,8,0);	
-						  Initialize( centerX, centerY, WidIn, HeiIn, img, Wid, Hei );
-						  cout<<"star"<<endl;
-						  track = true;//½øĞĞ¸ú×Ù
-						  cvShowImage("foreground",pFrontImg1);
-						  return;
-
-					  }
-				  }
-
-			  }
-		  }
-
-		  break;
-	}
-}
-
-
-void main(int argc, char *argv[])
-{
-	int FrameNum=0;  //Ö¡ºÅ
-	int k=0;
-	CvCapture * capture = 0;
-
+	CvCapture * capture = 0;//è¯»å–è§†é¢‘çš„ç±»
+	//argc=1,è¡¨ç¤ºåªæœ‰ä¸€ç¨‹åºåç§°ã€‚argc=2ï¼Œè¡¨ç¤ºé™¤äº†ç¨‹åºåå¤–è¿˜æœ‰ä¸€ä¸ªå‚æ•°ã€‚
+	//å¦‚æœå‚æ•°argv[1]æ˜¯å•ä¸ªæ•°å­—ï¼Œåˆ™æ‰“å¼€æ‘„åƒå¤´è¿›è¡Œæ•æ‰;/å¦åˆ™ä¾¿æ˜¯ä»è§†é¢‘æ–‡ä»¶ä¸­æ•è·ï¼Œargv[1]ç”¨äºæŒ‡å®š.aviæ–‡ä»¶
 	/*if( argc == 1 || (argc == 2 && strlen(argv[1]) == 1 && isdigit(argv[1][0])))
-		capture = cvCaptureFromCAM( argc == 2 ? argv[1][0] - '0' : 0 );
+	capture = cvCaptureFromCAM( argc == 2 ? argv[1][0] - '0' : 0 );//ä»æ‘„åƒå¤´è¯»å–è§†é¢‘
 	else if( argc == 2 )*/
-		capture = cvCaptureFromAVI( /*argv[1]*/"../13.avi");
-
-	IplImage* frame[Num]; //ÓÃÀ´´æ·ÅÍ¼Ïñ
-	int i,j;
-	uchar key = false;      //ÓÃÀ´ÉèÖÃÔİÍ£
-	float rho_v;//±íÊ¾ÏàËÆ¶È
+	capture = cvCaptureFromAVI( /*argv[1]*/"E://111.wmv");//ç›´æ¥è¯»å–
+	int rho_v;//è¡¨ç¤ºåˆæ³•æ€§
 	float max_weight;
-
-	int sum=0;    //ÓÃÀ´´æ·ÅÁ½Í¼ÏñÖ¡²îºóµÄÖµ
-	for (i=0;i<Num;i++)
-	{
-		frame[i]=NULL;
-	}
-
-	IplImage *curFrameGray=NULL;
-	IplImage *frameGray=NULL;
-
-	CvMat *Mat_D,*Mat_F;   //¶¯Ì¬¾ØÕóÓëÖ¡²îºó¾ØÕó
-	int row ,col;
 	cvNamedWindow("video",1);
-	//cvNamedWindow("background",1); 
-	//cvNamedWindow("foreground",1);   
-	cvNamedWindow("tracking",1);
 	int star = 0;
-	while (capture)
+	if (capture)
 	{
-		curframe=cvQueryFrame(capture); //×¥È¡Ò»Ö¡
-		if(!star)//³õÊ¼»¯
+		ofstream fout;
+		fout.open("E://test.txt");
+		while(1)
 		{
-			curFrameGray=cvCreateImage(cvGetSize(curframe),IPL_DEPTH_8U,1);
-			frameGray=cvCreateImage(cvGetSize(curframe),IPL_DEPTH_8U,1);
-			pBackImg=cvCreateImage(cvGetSize(curframe),IPL_DEPTH_8U,1);
-			pFrontImg=cvCreateImage(cvGetSize(curframe),IPL_DEPTH_8U,1);
-				//		pTrackImg = cvCreateImage(cvGetSize(curframe),IPL_DEPTH_8U,3);
-
-			cvSetZero(pFrontImg);  
-			cvCvtColor(curframe,pBackImg,CV_RGB2GRAY);
-
-			row=curframe->height;
-			col=curframe->width;
-			Mat_D=cvCreateMat(row,col,CV_32FC1);
-			cvSetZero(Mat_D);  
-			Mat_F=cvCreateMat(row,col,CV_32FC1);
-			cvSetZero(Mat_F);
-			Wid = curframe->width;
-			Hei = curframe->height; 
-			img = new unsigned char [Wid * Hei * 3];
-			star = 1;
-		}
-		pTrackImg = cvCloneImage(curframe);
-		IplToImge(curframe,Wid,Hei);//°Ñiplimage×ª»»µ½imgÊı×éÖĞ
-		//pTrackImg = cvCloneImage(curframe);
-		//cvCvtColor(curframe,curFrameGray,CV_RGB2GRAY);
-		
-		if(track)
-		{
-			/* ¸ú×ÙÒ»Ö¡ */
-			rho_v = ColorParticleTracking( img, Wid, Hei, xout, yout, WidOut, HeiOut, max_weight );
-			/* »­¿ò: ĞÂÎ»ÖÃÎªÀ¶¿ò */
-			if ( rho_v > 0 && max_weight > 0.0001 )  /* ÅĞ¶ÏÊÇ·ñÄ¿±ê¶ªÊ§ */
+			curframe=cvQueryFrame(capture); //æŠ“å–ä¸€å¸§
+			if (!curframe) break;
+			if(!star)//åˆå§‹åŒ–
 			{
+				Wid = curframe->width;
+				Hei = curframe->height;
+				img = new unsigned char [Wid * Hei * 3];
+				star = 1;
+			}
+			pTrackImg = cvCloneImage(curframe);//å¤åˆ¶å›¾ç‰‡
+			IplToImge(curframe,Wid,Hei);//æŠŠiplimageè½¬æ¢åˆ°imgæ•°ç»„ä¸­
+
+			if(track)
+			{
+				/* è·Ÿè¸ªä¸€å¸§ */
+				rho_v = ColorParticleTracking( img, Wid, Hei, xout, yout, WidOut, HeiOut, max_weight );//åˆæ³•æ€§
+				/* ç”»æ¡†: æ–°ä½ç½®ä¸ºè“æ¡† */
+				if ( rho_v == 1 && max_weight > 0.0001 )  /* åˆ¤æ–­æ˜¯å¦ç›®æ ‡ä¸¢å¤± */
+				{
 					cvRectangle(pTrackImg,cvPoint(xout - WidOut,yout - HeiOut),cvPoint(xout+WidOut,yout+HeiOut),cvScalar(255,0,0),2,8,0);
-					xin = xout; yin = yout;
+					xin = xout; yin = yout;//ä¸Šä¸€å¸§çš„è¾“å‡ºä½œä¸ºè¿™ä¸€å¸§çš„è¾“å…¥
 					WidIn = WidOut; HeiIn = HeiOut;
+				
+					fout<<xout<<"  "<<yout<<endl;
+			
+				}
+				else
+				{
+					cout<<"target lost"<<endl;
+				}
 			}
-			else
-			{
-				cout<<"target lost"<<endl;
-			}
+			cvShowImage("video",pTrackImg);
+			cvSetMouseCallback("video",mouseHandler,0);
+			if(pause){
+				cvWaitKey(1500);
+			}else
+				cvWaitKey(50);
+			cvReleaseImage(&pTrackImg);
 		}
-
-		cvShowImage("video",curframe);
-		cvShowImage("tracking",pTrackImg);
-		cvSetMouseCallback("video",mouseHandler,0);
-		cvWaitKey(10);
-	
-
+		cvReleaseCapture(&capture);
+		fout.close();	
 	}
-	cvReleaseImage(&curFrameGray);
-	cvReleaseImage(&frameGray);
-	cvReleaseImage(&pBackImg);
-	cvReleaseImage(&pFrontImg);
+	//é‡Šæ”¾å›¾åƒ
 	cvDestroyAllWindows();
 	ClearAll();
-	}
+}
